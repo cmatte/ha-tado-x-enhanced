@@ -20,8 +20,10 @@ Available entities vary with hardware, account capabilities and configuration.
 | :--- | :--- | :--- | :---: |
 | Boost All | Button | Apply a heating boost to all rooms for 30 minutes |  |
 | Boost Hot Water | Button | Apply a heating boost to the hot water for 1 hour | 1.0.0 |
-| Hot Water Mode | Selector | Off / Schedule / Boost | 1.0.0 |
+| Hot Water Mode | Selector | Off / Schedule / Boost. During Holiday Mode, `HOLIDAY_MODE_OFF` displays Off and `HOLIDAY_MODE_ON` displays Schedule. | 1.0.0; DEV-001 (unreleased) |
 | Presence Mode | Selector | Home / Away / Away (Geofencing) |  |
+| Holiday Mode | Switch | Enables or disables Holiday Mode for this Tado home. If the saved holiday end date is still in the future, enabling retains the existing dates (Scheduled or Active as appropriate). If the saved period has expired or is invalid, enabling creates a new seven-day holiday period starting immediately. Disabling preserves the stored dates and room/hot-water holiday settings. | DEV-001 (unreleased) |
+| Refresh Holiday Mode | Button | Immediately re-reads this home’s Holiday Mode information from Tado, updating the Holiday Status, Start and End sensors. Holiday data is also refreshed periodically and at scheduled start/end boundaries. | DEV-001 (unreleased) |
 | Resume Hot Water Schedule | Button | Resume hot water schedule | 1.0.0 |
 | Resume Schedules | Button | Resume heating schedules |  |
 | Turn Off All | Button | Turn off heating to all rooms |  |
@@ -38,10 +40,39 @@ Available entities vary with hardware, account capabilities and configuration.
 | API reset time | The daily API allowance is reset each day. The time that this happens varies between different users. This sensor monitors the API calls remaining to determine when the reset time will be. Note that this sensor will read 'Unknown' for up to 24 hours after first being installed, while the integration is determining when the reset time is. | 1.0.0 |
 | Hot water boost ends | If water heating is boosted, this sensor records when the boost period will end. It is Unknown if water heating is not boosted. | 1.0.0 |
 | Hot water next schedule change | Records the time for the next scheduled water heating change. Available when Tado provides a next-change timestamp in `SCHEDULE_ON` or `SCHEDULE_OFF` state; otherwise Unknown (including Away modes, explicitly Off, or no forthcoming change) | 1.0.0 |
-| Hot Water State | Records the status for hot water heating. This can be `OFF` / `AWAY_OFF` / `AWAY_ON` / `SCHEDULE_ON` / `SCHEDULE_OFF` / `BOOST`. Explicitly switching hot water off can produce `OFF` even while the home is Away; `AWAY_OFF` is a distinct API state. The Hot Water Mode selector maps `OFF` to Off and the Away schedule states to Schedule | 1.0.0 |
+| Hot Water State | Records the hot-water state reported by Tado: `OFF`, `AWAY_OFF`, `AWAY_ON`, `SCHEDULE_ON`, `SCHEDULE_OFF`, `BOOST`, `HOLIDAY_MODE_OFF` or `HOLIDAY_MODE_ON`. Explicitly switching hot water off can produce `OFF` even while Away; `AWAY_OFF` is distinct. During Holiday Mode, `HOLIDAY_MODE_OFF` maps to Hot Water Mode **Off**, while `HOLIDAY_MODE_ON` maps to **Schedule**. | 1.0.0; DEV-001 (unreleased) |
+| Holiday Status | The effective status of this home's Holiday Mode, determined from its enabled setting and configured start/end dates. **Off**: disabled, irrespective of stored dates. **Scheduled**: enabled, start date is in the future. **Active**: enabled, current time is within the holiday period. **Ended**: still enabled but the end date has passed; holiday settings are no longer in effect. If the information is missing or inconsistent, the sensor may have no valid state. See the detailed table below. | DEV-001 (unreleased) |
+| Holiday Start | The configured start of the holiday period, displayed as an absolute **local** date and time (e.g. `02 Dec 2026, 12:00`). The original UTC instant is available in the `utc_datetime` attribute. A stored date may remain visible even when Holiday Mode is Off or Ended. | DEV-001 (unreleased) |
+| Holiday End | The configured end of the holiday period, displayed as an absolute **local** date and time, with the UTC instant in the `utc_datetime` attribute. A stored date may remain visible after the period ends or Holiday Mode is disabled. | DEV-001 (unreleased) |
 | Outdoor Temperature | The outdoor temperature as returned by Tado for your location |  |
 | Solar Intensity | A percentage as returned by Tado for your location |  |
 | Weather State | The weather description as returned by Tado for your location. Depends on weather being selected in the home configuration. |  |
+
+
+### Holiday Mode status and sensor attributes
+
+Holiday Mode is managed independently for each Tado home. The **Holiday Status** sensor describes the *effective time-based state*; it is not simply a duplicate of the Holiday Mode switch.
+
+| Holiday Status | Holiday Mode enabled | Date conditions | Meaning | Version |
+| :--- | :---: | :--- | :--- | :---: |
+| Off | No | Any stored dates | Explicitly disabled; the saved dates can still be retained for later use. | DEV-001 (unreleased) |
+| Scheduled | Yes | Start is later than now; valid end follows start | Configured to begin automatically at the start time. | DEV-001 (unreleased) |
+| Active | Yes | Start is at or before now; end is after now | Holiday Mode is currently in its configured period. | DEV-001 (unreleased) |
+| Ended | Yes | End is at or before now; valid start precedes end | The configured period has expired, although the enabled flag remains set. It is no longer operational. | DEV-001 (unreleased) |
+| Unknown / unavailable | Unknown or invalid data | API data missing, unavailable, or dates invalid | A reliable status cannot be determined. | DEV-001 (unreleased) |
+
+For example, a holiday set for 1–7 November is **Scheduled** before its start, **Active** during its configured interval, and **Ended** after its end if it remains enabled. Manually switching it off instead produces **Off**. Switching an expired holiday on again creates a fresh seven-day period; if the existing end is still in the future, the original dates are retained.
+
+| Entity | Attribute | Description | Version |
+| :--- | :--- | :--- | :---: |
+| Holiday Status | `enabled` | Boolean enabled flag reported by Tado. It can remain `true` when status is Ended. | DEV-001 (unreleased) |
+| Holiday Status | `active` | Active flag reported by Tado; the sensor's effective status is calculated from the enabled flag and date interval, so it may differ briefly around a scheduled boundary. | DEV-001 (unreleased) |
+| Holiday Status | `room_settings` | Room-specific Holiday Mode settings returned by Tado. | DEV-001 (unreleased) |
+| Holiday Status | `hot_water_settings` | Hot-water Holiday Mode settings returned by Tado, where supplied. | DEV-001 (unreleased) |
+| Holiday Start | `utc_datetime` | Start instant in ISO-8601 UTC-offset form, suitable for templates requiring a machine-readable timestamp. | DEV-001 (unreleased) |
+| Holiday End | `utc_datetime` | End instant in ISO-8601 UTC-offset form. | DEV-001 (unreleased) |
+
+The Start and End sensor **states are formatted local text**, not native timestamp sensor values. For setting an explicit holiday period, including past start dates, use the `tado_x.set_holiday_mode` action described in [ACTIONS.md](ACTIONS.md). The action provides date/time selectors for both dates; ISO-8601 values can also be supplied in YAML. Holiday status is refreshed independently of room schedule-profile comparison, and relevant Holiday Mode operations also refresh hot-water information.
 
 
 #### API usage estimates
@@ -179,13 +210,3 @@ In addition to standard climate properties (`hvac_modes`, `hvac_action`, `min_te
 ## Scope and compatibility
 
 Room entity unique IDs and room actions are home-scoped; the same numeric room ID may occur in different Tado homes. The precise entity ID assigned by Home Assistant can vary for existing installations and user-renamed entities. Device and entity availability depends on the configured options, hardware, subscription and Tado API responses. For action parameters, see [ACTIONS.md](ACTIONS.md).
-
-
-## Holiday Mode (development, DEV-001)
-The Tado X Home device provides a Holiday Mode switch, Holiday Status sensor (Off, Scheduled, Active, Ended), Holiday Start and Holiday End local date/time text sensors, and Refresh Holiday Mode button. The switch enables any unexpired period without changing its dates; expired periods are replaced by seven days beginning immediately. Room and hot-water holiday settings are preserved. The status sensor includes stored settings as attributes. Holiday refresh runs at the configured schedule-check interval, independently of per-room profile polling, and at scheduled boundaries.
-
-### Holiday date presentation (DEV-001)
-
-**Holiday Start** and **Holiday End** are the only two date sensors. They display absolute local date/time text (for example `01 Nov 2026, 07:00`) instead of relative dates. Their `utc_datetime` attributes retain ISO-8601 timestamps for use in automations. The former `(Local)` duplicate entities have been removed.
-
-When Holiday Mode is active, the hot-water API may report `HOLIDAY_MODE_OFF`. **Hot Water State** retains this diagnostic API value; **Hot Water Mode** displays Off. Holiday switches and refreshes trigger an additional home coordinator refresh to update the hot-water entities.
